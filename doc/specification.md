@@ -29,4 +29,4 @@ summary.php
 func/
 db.php
 
-![alt text](https://file%2B.vscode-resource.vscode-cdn.net/Users/fais/Desktop/osp./Screenshot%202568-06-04%20at%2022.01.22.png?version%3D1749045692259)
+![Description of image](./Screenshot%202568-06-04%20at%2022.01.22.png)
