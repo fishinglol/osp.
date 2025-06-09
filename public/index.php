@@ -1,69 +1,112 @@
 <?php
-require_once __DIR__ . '/../fn/db.php';
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit;
+}
+
 require_once __DIR__ . '/../fn/functions.php';
 
-$month = $_GET['month'] ?? date('Y-m');      
-$cat   = $_GET['cat']   ?? '';
-$params = [':start' => "$month-01", ':end' => "$month-31"];
+$user_id       = $_SESSION['user_id'];
+$years         = getExpenseYears($user_id);
+$selectedYear  = isset($_GET['year'])  ? (int)$_GET['year']  : (int)date('Y');
+$selectedMonth = isset($_GET['month']) ? (int)$_GET['month'] : (int)date('m');
 
-$sql = "SELECT e.*, c.name AS category
-        FROM expenses e JOIN categories c ON c.id = e.category_id
-        WHERE e.happened_on BETWEEN :start AND :end";
-if ($cat !== '') {
-    $sql .= " AND e.category_id = :cat";
-    $params[':cat'] = $cat;
+$months = [
+    0 => 'All',
+    1 => 'January',   2 => 'February',
+    3 => 'March',     4 => 'April',
+    5 => 'May',       6 => 'June',
+    7 => 'July',      8 => 'August',
+    9 => 'September',10 => 'October',
+    11=> 'November', 12 => 'December'
+];
+
+if ($selectedMonth === 0) {
+    // whole year
+    $expenses = getExpensesByYear($user_id, $selectedYear);
+} else {
+    // single month
+    $expenses = getExpensesByMonth($user_id, $selectedYear, $selectedMonth);
 }
-$sql .= " ORDER BY e.happened_on DESC, e.id DESC";
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$rows = $stmt->fetchAll();
-
-$cats = $pdo->query('SELECT id,name FROM categories ORDER BY name')->fetchAll();
-
-$total = array_sum(array_column($rows, 'amount')); //total amount of spending
-
 ?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><title>Expense Log</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <title>Edit My Expenses</title>
+  <link rel="stylesheet" href="css/style.css" type="text/css" />
 </head>
-<body>
-<header><h1>Expense Log</h1></header>
-<nav>
-  <a class="btn" href="create.php">+ New Expense</a>
-  <a class="btn" href="categories.php">Categories</a>
-  <a class="btn" href="summary.php">Summary</a>
-</nav>
+<body class="container">
+  <header>
+    <h1>Edit My Expenses</h1>
+    <nav>
+      Hello, <?= htmlspecialchars($_SESSION['username']) ?> |
+      <a href="logout.php">Logout</a>
+    </nav>
+  </header>
 
-<form method="get">
-  <label>Month:
-    <input type="month" name="month" value="<?=h($month)?>">
-  </label>
-  <label>Category:
-    <select name="cat">
-      <option value="">— All —</option>
-      <?php foreach ($cats as $c): ?>
-        <option value="<?=$c['id']?>" <?= $cat==$c['id']?'selected':'' ?>><?=h($c['name'])?></option>
-      <?php endforeach; ?>
-    </select>
-  </label>
-  <button class="btn">Filter</button>
-</form>
+  <form method="get" class="mb-1">
+    <label>
+      Year:
+      <select name="year" onchange="this.form.submit()">
+        <?php foreach ($years as $yr): ?>
+          <option value="<?= $yr ?>" <?= $yr === $selectedYear ? 'selected' : '' ?>>
+            <?= $yr ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </label>
 
-<h2>Total: NT$<?=number_format($total,2)?></h2>
-<table class="table">
-  <tr><th>Date</th><th>Category</th><th>Amount ($)</th><th>Note</th><th></th></tr>
-  <?php foreach ($rows as $r): ?>
-  <tr>
-    <td><?=h($r['happened_on'])?></td>
-    <td><?=h($r['category'])?></td>
-    <td style="text-align:right;"><?=number_format($r['amount'],2)?></td>
-    <td><?=h($r['note'])?></td>
-    <td><a href="edit.php?id=<?= $r['id'] ?>">edit</a></td>
-    </tr>
-  <?php endforeach; ?>
-</table>
+    <label>
+      Month:
+      <select name="month" onchange="this.form.submit()">
+        <?php foreach ($months as $num => $name): ?>
+          <option value="<?= $num ?>" <?= $num === $selectedMonth ? 'selected' : '' ?>>
+            <?= $name ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+
+    <noscript><button class="btn" type="submit">Go</button></noscript>
+  </form>
+
+  <?php if (empty($expenses)): ?>
+    <?php if ($selectedMonth === 0): ?>
+      <p>No spendings in <?= $selectedYear ?>.</p>
+    <?php else: ?>
+      <p>No spendings for <?= $months[$selectedMonth] ?> <?= $selectedYear ?>.</p>
+    <?php endif; ?>
+  <?php else: ?>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date &amp; Time</th>
+          <th>Category</th>
+          <th>Amount</th>
+          <th>Description</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($expenses as $e): ?>
+          <tr>
+            <td><?= date('Y-m-d H:i', strtotime($e['expense_date'])) ?></td>
+            <td><?= htmlspecialchars($e['category_name'] ?? '—') ?></td>
+            <td><?= htmlspecialchars($e['amount']) ?></td>
+            <td><?= htmlspecialchars($e['description']) ?></td>
+            <td>
+              <a href="edit.php?id=<?= urlencode($e['id']) ?>">Edit</a> |
+              <a href="delete.php?id=<?= urlencode($e['id']) ?>"
+                 onclick="return confirm('Delete this expense?');">Delete</a>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  <?php endif; ?>
+
+  <p><a href="portal.php" class="btn">Back to Dashboard</a></p>
 </body>
 </html>
